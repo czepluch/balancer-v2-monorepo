@@ -1,3 +1,6 @@
 [submodule "pvt/lib/forge-std"]
 	path = pvt/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "pvt/lib/credible-std"]
+	path = pvt/lib/credible-std
+	url = https://github.com/phylaxsystems/credible-std.git
