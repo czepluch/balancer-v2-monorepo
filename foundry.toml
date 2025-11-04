@@ -42,4 +42,4 @@ remappings = [
 optimizer = true
 optimizer_runs = 9999
 solc_version = '0.8.20'
-evm_version = 'london'
+evm_version = 'prague'
