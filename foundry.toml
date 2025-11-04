@@ -23,3 +23,23 @@ max_test_rejects = 60000
 verbosity = 3
 runs = 100000
 max_test_rejects = 600000
+
+[profile.assertions]
+# Use assertions profile for pcl commands
+# FOUNDRY_PROFILE=assertions pcl build/test
+src = 'assertions/src'
+test = 'assertions/test'
+out = 'out-assertions'
+libs = ['pvt/lib']
+cache_path = 'forge-cache-assertions'
+allow_paths = ['../', 'pvt/lib/forge-std', 'pkg/']
+remappings = [
+    'credible-std/=pvt/lib/credible-std/src/',
+    'forge-std/=pvt/lib/forge-std/src/',
+    'ds-test/=pvt/lib/forge-std/lib/ds-test/src/',
+    '@balancer-labs/v2-interfaces/=pkg/interfaces/contracts/'
+]
+optimizer = true
+optimizer_runs = 9999
+solc_version = '0.8.20'
+evm_version = 'london'
