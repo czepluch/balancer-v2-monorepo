@@ -44,7 +44,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         // Execute batchSwap - should pass
@@ -64,7 +64,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](2);
@@ -83,7 +83,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](2);
@@ -104,7 +104,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](3);
@@ -126,7 +126,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](3);
@@ -151,7 +151,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](4);
@@ -173,7 +173,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](2);
@@ -193,7 +193,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](2);
@@ -213,7 +213,7 @@ contract MockBatchSwapTest is CredibleTest, Test {
         cl.assertion({
             adopter: address(vault),
             createData: type(BatchSwapDeltaAssertion).creationCode,
-            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector
+            fnSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector
         });
 
         IAsset[] memory assets = new IAsset[](2);

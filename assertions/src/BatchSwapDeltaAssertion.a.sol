@@ -5,36 +5,47 @@ import {Assertion} from "credible-std/Assertion.sol";
 import {PhEvm} from "credible-std/PhEvm.sol";
 import "@balancer-labs/v2-interfaces/vault/IVault.sol";
 import "@balancer-labs/v2-interfaces/vault/IAsset.sol";
-import "@balancer-labs/v2-interfaces/solidity-utils/openzeppelin/IERC20.sol";
+
+// Interface for pools that implement getRate()
+interface IRateProvider {
+    function getRate() external view returns (uint256);
+}
 
 /**
  * @title BatchSwapDeltaAssertion
- * @notice Detects the critical invariant violation where all deltas are negative
- *         during a batch swap, indicating value is being drained from the Vault.
+ * @notice Detects extreme rate manipulation in Balancer V2 stable pools during batch swaps.
  *
- * @dev This assertion protects against the exploit where both assets in a swap
- *      have negative deltas, meaning the Vault sends both assets without receiving
- *      anything in return. This was the vector for a critical Balancer vulnerability.
+ * @dev This assertion protects against exploits that manipulate pool rates through
+ *      accumulated rounding errors in the stable pool invariant calculation.
  *
- * Invariant: In any valid batchSwap:
- * - At least one asset must have a positive or zero delta (Vault receives or no change)
- * - It's invalid for ALL participating assets to have negative deltas (Vault only sends)
+ *      The exploit pattern:
+ *      - Long alternating batchSwap sequences manipulate balances near rounding boundaries
+ *      - Accumulated down-rounding biases the invariant D downward
+ *      - Lower D reduces BPT price (rate = D / totalSupply)
+ *      - Attacker extracts value via internal balance withdrawal
+ *
+ * Invariant: Pool rates should not change drastically within a single batchSwap call.
+ * - Flag if any pool's rate changes by more than 3x (or less than 0.33x)
  */
 contract BatchSwapDeltaAssertion is Assertion {
+    // Maximum allowed rate change: 3x multiplier in 18 decimals
+    uint256 constant MAX_RATE_CHANGE_MULTIPLIER = 3e18; // 3.0x
+    uint256 constant MIN_RATE_CHANGE_MULTIPLIER = 33e16; // 0.33x (inverse of 3)
+    uint256 constant ONE = 1e18;
+
     /**
      * @notice Register trigger on batchSwap function calls
      * @dev This assertion runs after every batchSwap call to the Vault
      */
     function triggers() external view override {
-        registerCallTrigger(this.assertionBatchSwapNonNegativeDeltas.selector, IVault.batchSwap.selector);
+        registerCallTrigger(this.assertionBatchSwapRateManipulation.selector, IVault.batchSwap.selector);
     }
 
     /**
-     * @notice Validates that not all deltas are negative in a batch swap
-     * @dev Checks that at least one asset flows INTO the Vault (positive delta)
-     *      or has no change (zero delta). Prevents value drainage attacks.
+     * @notice Validates that pool rates don't change drastically during a batch swap
+     * @dev Checks getRate() before and after the swap for all affected pools
      */
-    function assertionBatchSwapNonNegativeDeltas() external {
+    function assertionBatchSwapRateManipulation() external {
         address vault = ph.getAssertionAdopter();
 
         // Get all batchSwap calls in this transaction
@@ -42,74 +53,99 @@ contract BatchSwapDeltaAssertion is Assertion {
 
         // Check each batch swap call
         for (uint256 i = 0; i < batchSwapCalls.length; i++) {
-            _checkBatchSwapDeltas(vault, batchSwapCalls[i]);
+            PhEvm.CallInputs memory callInput = batchSwapCalls[i];
+
+            // Decode the batchSwap call parameters
+            (, // SwapKind kind
+                IVault.BatchSwapStep[] memory swaps,, // IAsset[] memory assets
+                , // FundManagement memory funds
+                , // int256[] memory limits
+                // uint256 deadline
+            ) = abi.decode(
+                callInput.input,
+                (IVault.SwapKind, IVault.BatchSwapStep[], IAsset[], IVault.FundManagement, int256[], uint256)
+            );
+
+            // Extract unique pool IDs from the swap steps
+            bytes32[] memory uniquePoolIds = _getUniquePoolIds(swaps);
+
+            // Check rate changes for each affected pool
+            for (uint256 j = 0; j < uniquePoolIds.length; j++) {
+                bytes32 poolId = uniquePoolIds[j];
+
+                // Get pool address from Vault
+                (address poolAddress,) = IVault(vault).getPool(poolId);
+
+                // Fork to pre-call state and read rate
+                ph.forkPreCall(callInput.id);
+                uint256 preRate = _getPoolRate(poolAddress);
+
+                // Fork to post-call state and read rate
+                ph.forkPostCall(callInput.id);
+                uint256 postRate = _getPoolRate(poolAddress);
+
+                // Check if rate changed drastically
+                // Avoid division by zero
+                if (preRate == 0) continue;
+
+                // Calculate rate change multiplier (postRate / preRate)
+                uint256 rateChangeMultiplier = (postRate * ONE) / preRate;
+
+                // Flag if rate increased by >3x or decreased to <0.33x
+                require(
+                    rateChangeMultiplier <= MAX_RATE_CHANGE_MULTIPLIER
+                        && rateChangeMultiplier >= MIN_RATE_CHANGE_MULTIPLIER,
+                    "BatchSwap: Extreme pool rate manipulation detected"
+                );
+            }
         }
     }
 
     /**
-     * @notice Checks a single batchSwap call for the delta invariant violation
-     * @dev Measures balance changes for each asset to determine deltas
-     * @param vault The Vault contract being monitored
-     * @param callInput The specific batchSwap call to analyze
+     * @dev Extracts unique pool IDs from batch swap steps
      */
-    function _checkBatchSwapDeltas(address vault, PhEvm.CallInputs memory callInput) private {
-        // Decode the batchSwap call parameters
-        // batchSwap(SwapKind kind, BatchSwapStep[] swaps, IAsset[] assets, FundManagement funds, int256[] limits, uint256 deadline)
-        (
-            , // SwapKind kind - not needed
-            , // BatchSwapStep[] memory swaps - not needed
-            IAsset[] memory assets,
-            , // FundManagement memory funds - not needed
-            , // int256[] memory limits - not needed
-                // uint256 deadline - not needed
-        ) = abi.decode(
-            callInput.input,
-            (IVault.SwapKind, IVault.BatchSwapStep[], IAsset[], IVault.FundManagement, int256[], uint256)
-        );
+    function _getUniquePoolIds(IVault.BatchSwapStep[] memory swaps) internal pure returns (bytes32[] memory) {
+        // First pass: count unique pool IDs
+        bytes32[] memory allPoolIds = new bytes32[](swaps.length);
+        uint256 uniqueCount = 0;
 
-        // Track deltas: count how many are negative vs non-negative
-        uint256 negativeDeltas = 0;
-        uint256 nonNegativeDeltas = 0;
-        uint256 totalTrackedAssets = 0;
+        for (uint256 i = 0; i < swaps.length; i++) {
+            bytes32 poolId = swaps[i].poolId;
+            bool isDuplicate = false;
 
-        // Check balance changes for each asset
-        for (uint256 j = 0; j < assets.length; j++) {
-            address assetAddress = address(assets[j]);
+            // Check if we've seen this poolId before
+            for (uint256 j = 0; j < uniqueCount; j++) {
+                if (allPoolIds[j] == poolId) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
 
-            // Skip ETH (address 0) - handle it separately if needed
-            if (assetAddress == address(0)) continue;
-
-            // Get Vault balance before this specific call
-            ph.forkPreCall(callInput.id);
-            uint256 preBalance = IERC20(assetAddress).balanceOf(vault);
-
-            // Get Vault balance after this specific call
-            ph.forkPostCall(callInput.id);
-            uint256 postBalance = IERC20(assetAddress).balanceOf(vault);
-
-            // Calculate delta (positive = Vault received, negative = Vault sent)
-            int256 delta = int256(postBalance) - int256(preBalance);
-
-            totalTrackedAssets++;
-
-            if (delta < 0) {
-                negativeDeltas++;
-            } else {
-                // delta >= 0 (Vault received tokens or no change)
-                nonNegativeDeltas++;
+            if (!isDuplicate) {
+                allPoolIds[uniqueCount] = poolId;
+                uniqueCount++;
             }
         }
 
-        // CRITICAL INVARIANT: Cannot have ALL deltas be negative
-        // At least one asset must flow INTO the Vault (positive) or stay unchanged (zero)
-        require(
-            totalTrackedAssets == 0 || nonNegativeDeltas > 0, "BatchSwap: All deltas negative - value drainage detected"
-        );
+        // Second pass: create array with only unique IDs
+        bytes32[] memory uniquePoolIds = new bytes32[](uniqueCount);
+        for (uint256 i = 0; i < uniqueCount; i++) {
+            uniquePoolIds[i] = allPoolIds[i];
+        }
 
-        // Additional safety check for the common two-asset swap case
-        // This makes the error more explicit for the most common scenario
-        if (totalTrackedAssets == 2 && negativeDeltas == 2) {
-            revert("BatchSwap: Both deltas negative in two-asset swap - exploit detected");
+        return uniquePoolIds;
+    }
+
+    /**
+     * @dev Safely gets the rate from a pool, returns 0 if pool doesn't support getRate()
+     */
+    function _getPoolRate(address pool) internal view returns (uint256) {
+        // Try to call getRate() on the pool
+        try IRateProvider(pool).getRate() returns (uint256 rate) {
+            return rate;
+        } catch {
+            // Pool doesn't implement getRate() or call failed
+            return 0;
         }
     }
 }

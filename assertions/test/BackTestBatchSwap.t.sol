@@ -27,7 +27,7 @@ contract BatchSwapBacktest is CredibleTestWithBacktesting {
             endBlock: END_BLOCK,
             blockRange: BLOCK_RANGE,
             assertionCreationCode: type(BatchSwapDeltaAssertion).creationCode,
-            assertionSelector: BatchSwapDeltaAssertion.assertionBatchSwapNonNegativeDeltas.selector,
+            assertionSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector,
             rpcUrl: vm.envString("MAINNET_RPC_URL")
         });
     }
