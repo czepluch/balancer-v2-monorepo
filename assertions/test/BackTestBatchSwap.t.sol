@@ -17,9 +17,12 @@ contract BatchSwapBacktest is CredibleTestWithBacktesting {
     // uint256 constant END_BLOCK = 23718374;
     // uint256 constant BLOCK_RANGE = 1;
 
-    // Arbitrum Exploit Block (396293464)
-    // uint256 constant END_BLOCK = 396293465;
-    // uint256 constant BLOCK_RANGE = 3;
+    /// @notice Override script search paths for this project's non-standard structure
+    function _getScriptSearchPaths() internal pure override returns (string[] memory) {
+        string[] memory paths = new string[](1);
+        paths[0] = "pvt/lib/credible-std/scripts/backtesting/transaction_fetcher.sh";
+        return paths;
+    }
 
     function testBacktest_Balancer_BatchSwapOperations() public {
         BacktestingTypes.BacktestingResults memory results = executeBacktest({
@@ -30,5 +33,7 @@ contract BatchSwapBacktest is CredibleTestWithBacktesting {
             assertionSelector: BatchSwapDeltaAssertion.assertionBatchSwapRateManipulation.selector,
             rpcUrl: vm.envString("MAINNET_RPC_URL")
         });
+
+        assertEq(results.assertionFailures, 0, "Reverting assertion(s), potential exploit tx.");
     }
 }
